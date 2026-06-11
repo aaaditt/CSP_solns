@@ -11,4 +11,6 @@ print(subject.title())
 print(subject.capitalize())
 print(subject.split(' '))
 print(subject.replace("ai", "artificial intelligence"))
-print(subject.count("a"))
+
+places= ["mumbai","delhi","pune","bangalore"]
+print(places[0])
