@@ -14,3 +14,6 @@ print(subject.replace("ai", "artificial intelligence"))
 
 places= ["mumbai","delhi","pune","bangalore"]
 print(places[0])
+
+nums= [1,2,3,4,5]
+print(" sum of the numbers:", sum(nums))
