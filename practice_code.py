@@ -17,3 +17,14 @@ print(places[0])
 
 nums= [1,2,3,4,5]
 print(" sum of the numbers:", sum(nums))
+print("min of the numbers: ", min(nums))
+print("max of the numbers: ", max(nums))
+print("average of the numbers: ", sum(nums)/len(nums))
+
+while i<5:
+    i+=1
+    if i==3:
+        continue
+    print(i)
+
+
