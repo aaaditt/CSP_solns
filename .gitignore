@@ -1,0 +1,12 @@
+# Explained versions (personal reference, not for GitHub)
+csv_analyzer_explained.py
+csv_basic_explained.py
+
+# Test files
+test_analyzer.py
+test_basic.py
+test_output.csv
+
+# Python cache
+__pycache__/
+*.pyc
