@@ -2,7 +2,6 @@ import pandas as pd
 
 
 def load_csv(filepath):
-    """Loads a CSV file and returns a DataFrame."""
     try:
         df = pd.read_csv(filepath)
         print(f"\nLoaded '{filepath}' — {df.shape[0]} rows, {df.shape[1]} columns.\n")
@@ -16,7 +15,6 @@ def load_csv(filepath):
 
 
 def summarize(df):
-    """Prints a summary of the DataFrame — shape, types, missing values, and basic stats."""
     print("=" * 50)
     print("  DATA SUMMARY")
     print("=" * 50)
@@ -47,7 +45,6 @@ def summarize(df):
 
 
 def main():
-    """Asks for a CSV file path, loads it, and prints the summary."""
     filepath = input("Enter CSV file path: ").strip()
     df = load_csv(filepath)
     if df is not None:

@@ -2,7 +2,6 @@ import pandas as pd
 
 
 def load_csv(filepath):
-    """Loads a CSV file into a DataFrame and returns it."""
     try:
         df = pd.read_csv(filepath)
         print(f"\n[OK] Successfully loaded '{filepath}' ({df.shape[0]} rows, {df.shape[1]} columns).\n")
@@ -19,7 +18,6 @@ def load_csv(filepath):
 
 
 def summarize(df):
-    """Prints a full summary of the dataframe including shape, types, missing values, and numeric stats."""
     print("\n" + "=" * 60)
     print("                   DATA SUMMARY")
     print("=" * 60)
@@ -57,7 +55,6 @@ def summarize(df):
 
 
 def filter_data(df, column, value):
-    """Returns rows where the given column matches the given value."""
     if column not in df.columns:
         print(f"\n[ERROR] Column '{column}' does not exist.\n")
         return df
@@ -77,7 +74,6 @@ def filter_data(df, column, value):
 
 
 def sort_data(df, column, ascending=True):
-    """Returns the dataframe sorted by the specified column."""
     if column not in df.columns:
         print(f"\n[ERROR] Column '{column}' does not exist.\n")
         return df
@@ -89,7 +85,6 @@ def sort_data(df, column, ascending=True):
 
 
 def export_csv(df, output_path):
-    """Saves the dataframe to a new CSV file."""
     try:
         df.to_csv(output_path, index=False)
         print(f"\n[OK] Data exported successfully to '{output_path}'.\n")
@@ -100,7 +95,6 @@ def export_csv(df, output_path):
 
 
 def show_menu():
-    """Displays the main menu options."""
     print("-" * 40)
     print("  CSV Analyzer - Main Menu")
     print("-" * 40)
@@ -113,7 +107,6 @@ def show_menu():
 
 
 def main():
-    """Main function that runs the CSV analyzer."""
     print("\n>> Welcome to the CSV Analyzer!\n")
 
     filepath = input("Enter the path to your CSV file: ").strip()
