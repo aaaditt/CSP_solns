@@ -2,6 +2,5 @@ __pycache__/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
-.claude/
 *.egg-info/
 .env
