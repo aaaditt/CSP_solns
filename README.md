@@ -55,12 +55,8 @@ python csv_analyzer.py
 
 ### Sample Data
 
-A sample CSV file is included in `task1/data/sample_data.csv` to test both scripts.
+A sample CSV file tgat i used is included in `task1/data/sample_data.csv` to test both scripts.
 
 ---
 
-### Requirements
 
-```
-pip install pandas
-```
