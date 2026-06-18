@@ -1,5 +1,3 @@
-# Week 1
-
 ## Task 1: CSV Analyzer Scripts
 
 Two Python scripts that load and analyze CSV files using pandas.
