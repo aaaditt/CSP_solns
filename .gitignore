@@ -4,4 +4,6 @@ __pycache__/
 .ipynb_checkpoints/
 *.egg-info/
 .env
-#gitignore done
+venv/
+.venv/
+env/
