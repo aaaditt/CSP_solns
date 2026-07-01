@@ -17,7 +17,21 @@ def web_search(query: str) -> str:
     try:
         from langchain_tavily import TavilySearch
         search = TavilySearch(max_results=3, tavily_api_key=api_key)
-        results = search.invoke(query)
-        return str(results)
+        raw = search.invoke(query)
+
+        # Format results into clean readable text for the LLM
+        results = raw if isinstance(raw, list) else raw.get("results", [])
+        if not results:
+            return "No results found."
+
+        lines = []
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "No title")
+            content = r.get("content", r.get("snippet", ""))
+            url = r.get("url", "")
+            lines.append(f"{i}. {title}\n   {content}\n   Source: {url}")
+
+        return "\n\n".join(lines)
+
     except Exception as e:
         return f"Error searching the web: {e}"
