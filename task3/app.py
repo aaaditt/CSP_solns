@@ -1,11 +1,20 @@
 """Streamlit chat UI for the multi-tool agent. Run with: streamlit run app.py"""
 
+import os
 import tempfile
 import streamlit as st
 from dotenv import load_dotenv
 from agent.agent import create_my_agent, run_agent, tool_history
 
 load_dotenv()
+
+# Bridge Streamlit Cloud secrets → env vars (so os.getenv works on both local and cloud)
+for key in ["GOOGLE_API_KEY", "TAVILY_API_KEY"]:
+    if key not in os.environ:
+        try:
+            os.environ[key] = st.secrets[key]
+        except (KeyError, FileNotFoundError):
+            pass
 
 st.set_page_config(
     page_title="Multi-Tool AI Agent",
