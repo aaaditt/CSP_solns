@@ -18,7 +18,7 @@ for key in ["GOOGLE_API_KEY", "TAVILY_API_KEY"]:
 
 st.set_page_config(
     page_title="Multi-Tool AI Agent",
-    page_icon="🤖",
+    page_icon="📄",
     layout="wide",
 )
 
@@ -30,7 +30,7 @@ if "messages" not in st.session_state:
 
 # Sidebar — PDF upload + tool history
 with st.sidebar:
-    st.header("📄 Upload PDF")
+    st.header("Upload PDF")
     uploaded_file = st.file_uploader(
         "Upload a PDF to ask questions about it",
         type=["pdf"],
@@ -69,7 +69,7 @@ with st.sidebar:
         st.caption("No tools used yet. Start chatting!")
 
 # Main chat area
-st.title("🤖 Multi-Tool AI Agent")
+st.title("Multi-Tool AI Agent")
 st.caption("Calculator · Web Search · PDF Summarizer — powered by LangChain + Gemini")
 
 for msg in st.session_state.messages:

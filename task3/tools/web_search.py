@@ -19,19 +19,45 @@ def web_search(query: str) -> str:
         search = TavilySearch(max_results=3, tavily_api_key=api_key)
         raw = search.invoke(query)
 
-        # Format results into clean readable text for the LLM
-        results = raw if isinstance(raw, list) else raw.get("results", [])
-        if not results:
-            return "No results found."
+        # TavilySearch can return different shapes depending on version:
+        # - A list of {'type': 'text', 'text': '...'} blocks
+        # - A list of {'title': ..., 'content': ..., 'url': ...} dicts
+        # - A dict with a 'results' key
 
-        lines = []
-        for i, r in enumerate(results, 1):
-            title = r.get("title", "No title")
-            content = r.get("content", r.get("snippet", ""))
-            url = r.get("url", "")
-            lines.append(f"{i}. {title}\n   {content}\n   Source: {url}")
+        if isinstance(raw, list):
+            parts = []
+            for item in raw:
+                if isinstance(item, dict):
+                    if "text" in item:
+                        # Content-block format
+                        parts.append(item["text"])
+                    elif "content" in item:
+                        # Standard result format
+                        title = item.get("title", "")
+                        content = item.get("content", "")
+                        url = item.get("url", "")
+                        entry = f"{title}\n{content}"
+                        if url:
+                            entry += f"\nSource: {url}"
+                        parts.append(entry)
+            return "\n\n".join(parts) if parts else str(raw)
 
-        return "\n\n".join(lines)
+        if isinstance(raw, dict):
+            results = raw.get("results", [])
+            if results:
+                parts = []
+                for r in results:
+                    title = r.get("title", "")
+                    content = r.get("content", r.get("snippet", ""))
+                    url = r.get("url", "")
+                    entry = f"{title}\n{content}"
+                    if url:
+                        entry += f"\nSource: {url}"
+                    parts.append(entry)
+                return "\n\n".join(parts)
+            return raw.get("answer", str(raw))
+
+        return str(raw)
 
     except Exception as e:
         return f"Error searching the web: {e}"
