@@ -1,9 +1,11 @@
 __pycache__/
 *.pyc
 *.pyo
+*.tmp
 .ipynb_checkpoints/
 *.egg-info/
 .env
 venv/
 .venv/
 env/
+.claude/

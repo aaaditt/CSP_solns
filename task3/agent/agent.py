@@ -1,31 +1,25 @@
 """
-Agent Setup
-Creates the LangChain agent with all tools, conversation memory,
-and tool execution timing.
+Sets up the LangChain agent with tools, memory, and tool-call timing.
 """
 
 import os
 import time
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 
-# Import our tools
 from tools.calculator import calculator
 from tools.web_search import web_search
 from tools.pdf_summarizer import load_pdf, query_pdf
 
 load_dotenv()
 
-# ── Tool execution tracker (Bonus: timing + history) ──────────────
+# Stores tool execution history for the sidebar display
+tool_history = []
 
-tool_history = []  # List of dicts: {tool, output, time_seconds}
-
-
-# ── Build the agent ───────────────────────────────────────────────
 
 def create_my_agent():
-    """Creates and returns the agent graph with all tools."""
+    """Builds the agent with Gemini + all four tools."""
 
     model = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -35,10 +29,10 @@ def create_my_agent():
 
     tools = [calculator, web_search, load_pdf, query_pdf]
 
-    agent = create_agent(
+    agent = create_react_agent(
         model=model,
         tools=tools,
-        system_prompt=(
+        prompt=(
             "You are a helpful AI assistant with access to these tools:\n"
             "- calculator: for math expressions (percentages, arithmetic)\n"
             "- web_search: for current information from the internet\n"
@@ -55,34 +49,21 @@ def create_my_agent():
 
 def run_agent(agent, user_input, chat_history):
     """
-    Runs the agent with a user message and returns the response.
-    Tracks tool execution timing.
-
-    Args:
-        agent: The compiled agent graph
-        user_input: The user's message string
-        chat_history: List of previous messages (dicts with role/content)
-
-    Returns:
-        tuple: (response_text, updated_chat_history)
+    Sends user_input to the agent and returns the response text.
+    Also logs tool calls with their execution time to tool_history.
     """
-    # Build messages list from chat history + new input
-    messages = []
-    for msg in chat_history:
-        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages = [{"role": m["role"], "content": m["content"]} for m in chat_history]
     messages.append({"role": "user", "content": user_input})
 
     start_time = time.time()
 
     try:
         result = agent.invoke({"messages": messages})
-        # The last message in the result is the AI's response
         output_messages = result["messages"]
 
-        # Track any tool calls that happened
+        # Log any tool calls that happened during this run
         for msg in output_messages:
-            msg_type = getattr(msg, "type", "")
-            if msg_type == "tool":
+            if getattr(msg, "type", "") == "tool":
                 elapsed = time.time() - start_time
                 tool_history.append({
                     "tool": getattr(msg, "name", "unknown"),
@@ -90,17 +71,14 @@ def run_agent(agent, user_input, chat_history):
                     "time_seconds": round(elapsed, 2),
                 })
 
-        # Get the final AI response (last AI message)
+        # Grab the final AI response (last AI message with content)
         response_text = ""
         for msg in reversed(output_messages):
             if getattr(msg, "type", "") == "ai" and getattr(msg, "content", ""):
                 response_text = msg.content
                 break
 
-        if not response_text:
-            response_text = "I processed your request but couldn't generate a response."
-
-        return response_text
+        return response_text or "I processed your request but couldn't generate a response."
 
     except Exception as e:
         return f"Sorry, something went wrong: {e}"

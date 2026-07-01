@@ -1,7 +1,7 @@
 langchain
 langchain-google-genai
 langchain-tavily
-tavily-python
+langgraph
 PyPDF2
 streamlit
 python-dotenv

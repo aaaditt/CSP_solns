@@ -1,8 +1,4 @@
-"""
-Web Search Tool
-Uses Tavily API through LangChain's langchain-tavily package.
-Returns search results with titles, snippets, and source URLs.
-"""
+"""Web search tool using Tavily via LangChain."""
 
 import os
 from langchain_core.tools import tool
@@ -11,10 +7,8 @@ from langchain_core.tools import tool
 @tool
 def web_search(query: str) -> str:
     """
-    Searches the web for current information.
-    Use this when the user asks about recent news, events,
-    or anything that requires up-to-date information.
-    Returns titles, snippets, and source URLs.
+    Search the web for current information. Returns top results with
+    titles, snippets, and source URLs.
     """
     api_key = os.getenv("TAVILY_API_KEY", "")
     if not api_key or api_key == "your_tavily_api_key_here":

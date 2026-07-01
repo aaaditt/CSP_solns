@@ -1,14 +1,9 @@
-"""
-Calculator Tool
-Evaluates math expressions safely using Python's AST module.
-Handles: addition, subtraction, multiplication, division, percentages.
-"""
+"""Safe math expression evaluator using AST (no eval())."""
 
 import ast
 import operator
 from langchain_core.tools import tool
 
-# Map AST node types to actual Python operators
 ALLOWED_OPS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -20,16 +15,13 @@ ALLOWED_OPS = {
 
 
 def safe_eval(node):
-    """Walk the AST tree and compute the result safely (no eval())."""
-    # Plain number
+    """Recursively evaluate an AST node using only whitelisted operators."""
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
-    # Binary operation like 2 + 3
     if isinstance(node, ast.BinOp) and type(node.op) in ALLOWED_OPS:
         left = safe_eval(node.left)
         right = safe_eval(node.right)
         return ALLOWED_OPS[type(node.op)](left, right)
-    # Unary operation like -5
     if isinstance(node, ast.UnaryOp) and type(node.op) in ALLOWED_OPS:
         return ALLOWED_OPS[type(node.op)](safe_eval(node.operand))
     raise ValueError(f"Unsupported: {ast.dump(node)}")
@@ -38,14 +30,8 @@ def safe_eval(node):
 @tool
 def calculator(expression: str) -> str:
     """
-    Evaluates a math expression and returns the result.
-    Use this for any arithmetic: addition, subtraction, multiplication,
-    division, powers, percentages.
-
-    Examples:
-      '250 * 0.15' for 15% of 250
-      '5000 / 12' for monthly payment
-      '100 + 50' for addition
+    Evaluate a math expression safely. Supports +, -, *, /, **, and percentages.
+    Examples: '250 * 0.15', '5000 / 12', '2 ** 10'
     """
     try:
         tree = ast.parse(expression, mode="eval")
