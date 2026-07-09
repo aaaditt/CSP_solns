@@ -9,3 +9,6 @@ venv/
 .venv/
 env/
 .claude/
+*.db
+*.log
+node_modules/

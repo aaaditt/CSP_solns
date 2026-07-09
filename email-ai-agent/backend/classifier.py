@@ -44,7 +44,7 @@ LOWER confidence (below 0.5) unless the email itself shows evidence of payment.
 
 Respond with STRICT JSON ONLY -- no prose, no markdown code fences, no explanation. Exactly
 this shape:
-{"is_subscription": true, "category": "saas", "confidence": 0.92, "summary": "one-line summary"}
+{{"is_subscription": true, "category": "saas", "confidence": 0.92, "summary": "one-line summary"}}
 
 category must be exactly one of: streaming, saas, hosting, domain, telecom, gym, newsletter,
 finance, other, not_subscription.

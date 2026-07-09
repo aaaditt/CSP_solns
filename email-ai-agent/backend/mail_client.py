@@ -9,6 +9,7 @@ Gmail API or Microsoft Graph only touches this module.
 import imaplib
 import email
 import email.message
+import email.policy
 import re
 from email.header import decode_header
 from email.utils import parsedate_to_datetime, parseaddr
@@ -85,7 +86,7 @@ def _extract_body(msg: email.message.Message) -> str:
 
 
 def _parse_message(uid: str, raw: bytes) -> dict:
-    msg = email.message_from_bytes(raw)
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
 
     sender_name, sender_email = parseaddr(_decode(msg.get("From")))
     subject = _decode(msg.get("Subject"))
@@ -138,13 +139,16 @@ def fetch_full_body(uid: str) -> str:
         if typ != "OK" or not msg_data or msg_data[0] is None:
             raise ValueError(f"Email with uid {uid} not found (deleted or moved)")
         raw = msg_data[0][1]
-        msg = email.message_from_bytes(raw)
+        msg = email.message_from_bytes(raw, policy=email.policy.default)
         return _extract_body(msg)
     finally:
         imap.logout()
 
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     emails = fetch_recent(20)
     for e in emails:
         print(f"{e['date']}  |  {e['sender']} <{e['sender_email']}>  |  {e['subject']}")
