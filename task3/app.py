@@ -70,7 +70,7 @@ with st.sidebar:
 
 # Main chat area
 st.title("Multi-Tool AI Agent")
-st.caption("Calculator · Web Search · PDF Summarizer — powered by LangChain + Gemini")
+st.caption("Calculator · Web Search · PDF Summarizer: Powered by LangChain + Gemini")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):

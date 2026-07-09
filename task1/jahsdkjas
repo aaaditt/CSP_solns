@@ -1,0 +1,16 @@
+Name,Age,Department,Salary,Experience_Years,Rating
+Alice,29,Engineering,75000.0,5,4.2
+Bob,35,Marketing,62000.0,8,3.8
+Charlie,42,Engineering,95000.0,15,4.7
+Diana,28,HR,55000.0,3,4.0
+Eve,31,Marketing,64000.0,6,3.5
+Frank,45,Engineering,105000.0,20,4.9
+Grace,26,HR,50000.0,2,3.9
+Hank,38,Sales,72000.0,10,4.1
+Ivy,33,Sales,68000.0,7,
+Jack,40,Engineering,92000.0,14,4.6
+Karen,27,HR,,1,3.7
+Leo,36,Marketing,67000.0,9,4.3
+Mona,29,Sales,60000.0,4,
+Nick,44,Engineering,98000.0,18,4.8
+Olivia,32,Marketing,63000.0,5,3.6

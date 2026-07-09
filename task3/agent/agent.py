@@ -18,6 +18,27 @@ load_dotenv()
 tool_history = []
 
 
+def _extract_text(content):
+    """
+    Gemini's newer "thinking" mode returns message content as a list of
+    content-block dicts (e.g. {'type': 'text', 'text': ..., 'extras': {...}})
+    instead of a plain string. Pull just the text out of those blocks.
+    """
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+
+    return str(content)
+
+
 def create_my_agent():
     """Builds the agent with Gemini + all four tools."""
 
@@ -75,7 +96,7 @@ def run_agent(agent, user_input, chat_history):
         response_text = ""
         for msg in reversed(output_messages):
             if getattr(msg, "type", "") == "ai" and getattr(msg, "content", ""):
-                response_text = msg.content
+                response_text = _extract_text(msg.content)
                 break
 
         return response_text or "I processed your request but couldn't generate a response."
