@@ -12,12 +12,15 @@ from sqlalchemy import or_, func
 from db import init_db, get_db, Email, SyncLog, ActionLog
 import agent
 import mail_client
+import scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    scheduler.start()
     yield
+    scheduler.stop()
 
 
 app = FastAPI(title="Email AI Agent", lifespan=lifespan)
@@ -61,7 +64,7 @@ def build_email_query(
 
 @app.post("/api/sync")
 def sync():
-    return agent.run_sync()
+    return agent.run_sync(trigger="manual")
 
 
 @app.get("/api/emails")
@@ -213,5 +216,6 @@ def stats(db: Session = Depends(get_db)):
             "emails_classified": last_sync.emails_classified,
             "status": last_sync.status,
             "error": last_sync.error,
+            "trigger": last_sync.trigger,
         },
     }

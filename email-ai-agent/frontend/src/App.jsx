@@ -39,6 +39,13 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
+    // Background sync now happens on its own schedule server-side; poll
+    // periodically so newly-synced mail shows up without a manual click.
+    const interval = setInterval(refresh, 60_000);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timeout);

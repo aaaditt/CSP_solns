@@ -107,6 +107,59 @@ def _parse_message(uid: str, raw: bytes) -> dict:
     }
 
 
+def get_uidvalidity() -> str:
+    """
+    Cheap STATUS call (no message fetch). UIDVALIDITY changes if the mailbox
+    is recreated server-side, which invalidates any previously stored UID
+    cursor (the same UID number could now refer to a different message).
+    """
+    imap = _connect()
+    try:
+        typ, data = imap.status("INBOX", "(UIDVALIDITY)")
+        if typ != "OK" or not data or data[0] is None:
+            raise RuntimeError(f"IMAP STATUS failed: {typ}")
+        match = re.search(rb"UIDVALIDITY (\d+)", data[0])
+        if not match:
+            raise RuntimeError(f"Could not parse UIDVALIDITY from: {data[0]!r}")
+        return match.group(1).decode()
+    finally:
+        imap.logout()
+
+
+def fetch_since(min_uid: int, limit: int) -> tuple[list[dict], bool]:
+    """
+    Returns up to `limit` INBOX messages with UID > min_uid, oldest first, so a
+    capped run advances the cursor contiguously with no gaps. Second return
+    value is True if more matching messages exist beyond the cap, so a large
+    backlog is caught up over several runs instead of silently dropped (the
+    bug in the old count-based fetch_recent()).
+    """
+    imap = _connect()
+    try:
+        typ, data = imap.uid("search", None, f"UID {min_uid + 1}:*")
+        if typ != "OK":
+            raise RuntimeError(f"IMAP UID SEARCH failed: {typ}")
+
+        # Some IMAP servers interpret "x:*" as "the last message" when x is
+        # beyond the highest existing UID, instead of an empty range -- filter
+        # defensively so an up-to-date cursor can't re-fetch the newest email.
+        uids = sorted((u for u in data[0].split() if int(u) > min_uid), key=int)
+
+        more_available = len(uids) > limit
+        uids = uids[:limit]
+
+        results = []
+        for uid in uids:
+            typ, msg_data = imap.uid("fetch", uid, "(RFC822)")
+            if typ != "OK" or not msg_data or msg_data[0] is None:
+                continue
+            raw = msg_data[0][1]
+            results.append(_parse_message(uid.decode(), raw))
+        return results, more_available
+    finally:
+        imap.logout()
+
+
 def fetch_recent(n: int) -> list[dict]:
     """Returns up to n most-recently-arrived INBOX messages, newest first."""
     imap = _connect()

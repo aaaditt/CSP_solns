@@ -9,3 +9,7 @@ IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 SYNC_MAX_EMAILS = int(os.getenv("SYNC_MAX_EMAILS", "15"))
 INCLUDE_BODY_SNIPPET = os.getenv("INCLUDE_BODY_SNIPPET", "true").strip().lower() == "true"
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///emails.db")
+BACKGROUND_SYNC_ENABLED = os.getenv("BACKGROUND_SYNC_ENABLED", "true").strip().lower() == "true"
+SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "30"))

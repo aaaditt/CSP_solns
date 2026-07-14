@@ -3,3 +3,6 @@ uvicorn
 sqlalchemy
 python-dotenv
 google-genai
+apscheduler
+filelock
+httpx
