@@ -39,6 +39,11 @@ class Email(Base):
     reviewed = Column(Boolean, default=False)
     tag = Column(String, nullable=True)
     classified_at = Column(DateTime, nullable=True)
+    unsubscribe_mailto = Column(String, nullable=True)
+    unsubscribe_url = Column(String, nullable=True)
+    unsubscribe_one_click = Column(Boolean, default=False)
+    unsubscribe_status = Column(String, nullable=True)  # None | "sent" | "failed" | "opened"
+    unsubscribed_at = Column(DateTime, nullable=True)
 
 
 class SyncLog(Base):
@@ -88,6 +93,11 @@ class ActionLog(Base):
 # missing tables, never alters existing ones, so this covers that gap.
 _NEW_COLUMNS: list[tuple[str, str, str]] = [
     ("sync_log", "trigger", "TEXT DEFAULT 'manual'"),
+    ("emails", "unsubscribe_mailto", "TEXT"),
+    ("emails", "unsubscribe_url", "TEXT"),
+    ("emails", "unsubscribe_one_click", "BOOLEAN DEFAULT 0"),
+    ("emails", "unsubscribe_status", "TEXT"),
+    ("emails", "unsubscribed_at", "DATETIME"),
 ]
 
 

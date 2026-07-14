@@ -1,7 +1,11 @@
 import csv
 import io
+import ipaddress
+import socket
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -9,10 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
-from db import init_db, get_db, Email, SyncLog, ActionLog
+from db import init_db, get_db, utcnow, Email, SyncLog, ActionLog
 import agent
 import mail_client
 import scheduler
+import settings_store
 
 
 @asynccontextmanager
@@ -40,19 +45,24 @@ def build_email_query(
     reviewed: bool | None = None,
     search: str | None = None,
     sort: str = "date_desc",
+    ids: list[int] | None = None,
 ):
     """Shared filter logic for GET /api/emails and GET /api/export."""
     query = db.query(Email)
 
-    if subscription_only:
-        query = query.filter(Email.is_subscription == True)  # noqa: E712
-    if category:
-        query = query.filter(Email.category == category)
-    if reviewed is not None:
-        query = query.filter(Email.reviewed == reviewed)
-    if search:
-        like = f"%{search}%"
-        query = query.filter(or_(Email.sender.ilike(like), Email.subject.ilike(like)))
+    if ids is not None:
+        # "Export just what I selected" -- overrides the normal filter set.
+        query = query.filter(Email.id.in_(ids))
+    else:
+        if subscription_only:
+            query = query.filter(Email.is_subscription == True)  # noqa: E712
+        if category:
+            query = query.filter(Email.category == category)
+        if reviewed is not None:
+            query = query.filter(Email.reviewed == reviewed)
+        if search:
+            like = f"%{search}%"
+            query = query.filter(or_(Email.sender.ilike(like), Email.subject.ilike(like)))
 
     if sort == "date_asc":
         query = query.order_by(Email.date.asc())
@@ -83,23 +93,7 @@ def list_emails(
     rows = query.offset(offset).limit(limit).all()
     return {
         "total": total,
-        "emails": [
-            {
-                "id": r.id,
-                "sender": r.sender,
-                "sender_email": r.sender_email,
-                "subject": r.subject,
-                "date": r.date,
-                "body_snippet": r.body_snippet,
-                "is_subscription": r.is_subscription,
-                "category": r.category,
-                "confidence": r.confidence,
-                "summary": r.summary,
-                "reviewed": r.reviewed,
-                "tag": r.tag,
-            }
-            for r in rows
-        ],
+        "emails": [_email_dict(r) for r in rows],
     }
 
 
@@ -117,6 +111,11 @@ def _email_dict(r: Email) -> dict:
         "summary": r.summary,
         "reviewed": r.reviewed,
         "tag": r.tag,
+        "unsubscribe_mailto": r.unsubscribe_mailto,
+        "unsubscribe_url": r.unsubscribe_url,
+        "unsubscribe_one_click": r.unsubscribe_one_click,
+        "unsubscribe_status": r.unsubscribe_status,
+        "unsubscribed_at": r.unsubscribed_at,
     }
 
 
@@ -139,9 +138,40 @@ def get_email(email_id: int, db: Session = Depends(get_db)):
     return result
 
 
+class BulkEmailPatch(BaseModel):
+    ids: list[int]
+    reviewed: bool | None = None
+    tag: str | None = None
+
+
+@app.patch("/api/emails/bulk")
+def patch_emails_bulk(patch: BulkEmailPatch, db: Session = Depends(get_db)):
+    # Registered before /api/emails/{email_id} so "bulk" is never swallowed
+    # by the {email_id}: int path parameter.
+    if not patch.ids:
+        return {"updated": 0}
+
+    rows = db.query(Email).filter(Email.id.in_(patch.ids)).all()
+    changes = []
+    for row in rows:
+        if patch.reviewed is not None:
+            row.reviewed = patch.reviewed
+        if patch.tag is not None:
+            row.tag = patch.tag
+    if patch.reviewed is not None:
+        changes.append(f"reviewed={patch.reviewed}")
+    if patch.tag is not None:
+        changes.append(f"tag={patch.tag}")
+
+    db.add(ActionLog(action="bulk_update", detail=f"{len(rows)} emails: {', '.join(changes)}"))
+    db.commit()
+    return {"updated": len(rows)}
+
+
 class EmailPatch(BaseModel):
     reviewed: bool | None = None
     tag: str | None = None
+    unsubscribe_status: str | None = None
 
 
 @app.patch("/api/emails/{email_id}")
@@ -156,10 +186,113 @@ def patch_email(email_id: int, patch: EmailPatch, db: Session = Depends(get_db))
     if patch.tag is not None:
         row.tag = patch.tag
         db.add(ActionLog(action="tag", email_id=email_id, detail=patch.tag))
+    if patch.unsubscribe_status is not None:
+        # Clients may only self-report having opened the link/mailto -- "sent"
+        # is exclusively set server-side by POST .../unsubscribe after an
+        # actual one-click request succeeds, so a client can't spoof success.
+        if patch.unsubscribe_status != "opened":
+            raise HTTPException(
+                status_code=400,
+                detail="unsubscribe_status can only be set to 'opened' via this endpoint",
+            )
+        row.unsubscribe_status = "opened"
+        db.add(ActionLog(action="unsubscribe_opened", email_id=email_id))
 
     db.commit()
     db.refresh(row)
     return _email_dict(row)
+
+
+def _is_safe_unsubscribe_url(url: str) -> bool:
+    """
+    SSRF guard: unsubscribe_url comes from parsing an untrusted email's
+    List-Unsubscribe header, so before the backend ever POSTs to it
+    server-side (the one-click path), reject anything that isn't a plain
+    http(s) URL resolving to a public address -- otherwise a crafted email
+    could make this server hit internal services or cloud metadata endpoints
+    (e.g. 169.254.169.254) just by having the user click Unsubscribe.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.hostname or parsed.username or parsed.password:
+        return False
+
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        return False
+
+    return all(
+        not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast)
+        for ip in (ipaddress.ip_address(info[4][0]) for info in infos)
+    )
+
+
+@app.post("/api/emails/{email_id}/unsubscribe")
+def unsubscribe_email(email_id: int, db: Session = Depends(get_db)):
+    """
+    Safety model: only the RFC 8058 "one-click" contract (List-Unsubscribe-Post:
+    List-Unsubscribe=One-Click plus an https List-Unsubscribe link) is ever
+    fetched server-side -- that contract is specifically designed to be
+    automatable (no confirmation page, idempotent; mail clients like Gmail
+    already do this without asking). A bare link or mailto is handed back
+    untouched for the frontend to open -- the backend never makes an outbound
+    request for those, since a plain GET can be a tracking pixel or gate the
+    real unsubscribe action behind a confirmation page.
+    """
+    row = db.query(Email).filter(Email.id == email_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    if row.unsubscribe_one_click and row.unsubscribe_url:
+        if not _is_safe_unsubscribe_url(row.unsubscribe_url):
+            row.unsubscribe_status = "failed"
+            db.add(ActionLog(action="unsubscribe", email_id=email_id, detail="blocked: unsafe unsubscribe URL"))
+            db.commit()
+            return {
+                "action": "completed", "url": None, "mailto": None,
+                "status": "failed", "detail": "unsubscribe URL failed a safety check",
+            }
+
+        try:
+            resp = httpx.post(
+                row.unsubscribe_url,
+                data={"List-Unsubscribe": "One-Click"},
+                timeout=10.0,
+                follow_redirects=False,  # don't blindly follow a redirect into an internal address
+            )
+            success = resp.status_code < 400
+            detail = f"HTTP {resp.status_code}"
+        except httpx.HTTPError as exc:
+            success = False
+            detail = str(exc)
+
+        row.unsubscribe_status = "sent" if success else "failed"
+        row.unsubscribed_at = utcnow() if success else None
+        db.add(ActionLog(
+            action="unsubscribe",
+            email_id=email_id,
+            detail=f"one_click status={row.unsubscribe_status} ({detail})",
+        ))
+        db.commit()
+        return {"action": "completed", "url": None, "mailto": None, "status": row.unsubscribe_status, "detail": detail}
+
+    if row.unsubscribe_url:
+        db.add(ActionLog(action="unsubscribe", email_id=email_id, detail="handed link to client"))
+        db.commit()
+        return {"action": "open_link", "url": row.unsubscribe_url, "mailto": None, "status": None, "detail": None}
+
+    if row.unsubscribe_mailto:
+        db.add(ActionLog(action="unsubscribe", email_id=email_id, detail="handed mailto to client"))
+        db.commit()
+        return {"action": "open_mailto", "url": None, "mailto": row.unsubscribe_mailto, "status": None, "detail": None}
+
+    raise HTTPException(status_code=400, detail="No unsubscribe method found for this email")
 
 
 @app.get("/api/export")
@@ -169,9 +302,11 @@ def export_csv(
     reviewed: bool | None = None,
     search: str | None = None,
     sort: str = "date_desc",
+    ids: str | None = None,  # comma-separated email ids -- "export just what I selected"
     db: Session = Depends(get_db),
 ):
-    query = build_email_query(db, subscription_only, category, reviewed, search, sort)
+    id_list = [int(x) for x in ids.split(",") if x.strip()] if ids else None
+    query = build_email_query(db, subscription_only, category, reviewed, search, sort, ids=id_list)
     rows = query.all()
 
     buffer = io.StringIO()
@@ -219,3 +354,33 @@ def stats(db: Session = Depends(get_db)):
             "trigger": last_sync.trigger,
         },
     }
+
+
+class SettingsPatch(BaseModel):
+    sync_interval_minutes: int | None = None
+    sync_max_emails: int | None = None
+    background_sync_enabled: bool | None = None
+
+
+@app.get("/api/settings")
+def get_settings():
+    return settings_store.get_all()
+
+
+@app.patch("/api/settings")
+def patch_settings(patch: SettingsPatch):
+    updates = {}
+    if patch.sync_interval_minutes is not None:
+        if not (5 <= patch.sync_interval_minutes <= 1440):
+            raise HTTPException(status_code=400, detail="sync_interval_minutes must be between 5 and 1440")
+        updates["sync_interval_minutes"] = patch.sync_interval_minutes
+    if patch.sync_max_emails is not None:
+        if not (1 <= patch.sync_max_emails <= 100):
+            raise HTTPException(status_code=400, detail="sync_max_emails must be between 1 and 100")
+        updates["sync_max_emails"] = patch.sync_max_emails
+    if patch.background_sync_enabled is not None:
+        updates["background_sync_enabled"] = patch.background_sync_enabled
+
+    result = settings_store.set_many(updates)
+    scheduler.apply_settings()  # live: no restart needed for interval/enabled changes
+    return result

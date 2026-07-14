@@ -1,12 +1,17 @@
 """
 Background sync scheduler.
 
-Runs agent.run_sync() on a fixed interval so the user never has to click
-"Sync" for new mail to show up. Leader election uses a cross-process file
-lock rather than any assumption about uvicorn --reload's process layout --
+Runs agent.run_sync() on an interval so the user never has to click "Sync"
+for new mail to show up. Leader election uses a cross-process file lock
+rather than any assumption about uvicorn --reload's process layout --
 whichever process grabs the lock owns the schedule; the OS releases the lock
 automatically when that process exits, so a reload (old worker killed, new
 one started) hands leadership over cleanly with no stale-lock cleanup needed.
+
+This process always claims leadership at startup (if available), independent
+of whether background sync is currently enabled -- that way, if the user
+later flips background_sync_enabled on via the settings panel, a leader is
+already in place ready to add the job, rather than requiring a restart.
 """
 
 from pathlib import Path
@@ -15,8 +20,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from filelock import FileLock, Timeout
 
 import agent
-import config
+import settings_store
 
+_JOB_ID = "background_sync"
 _LOCK_PATH = Path(__file__).parent / ".scheduler.lock"
 _lock = FileLock(str(_LOCK_PATH), timeout=0)
 _scheduler = BackgroundScheduler()
@@ -24,11 +30,8 @@ _is_leader = False
 
 
 def start() -> bool:
-    """Starts the background sync job if enabled and this process wins the leader lock."""
+    """Claims leadership and applies current settings. Returns True if this process is now the leader."""
     global _is_leader
-
-    if not config.BACKGROUND_SYNC_ENABLED:
-        return False
 
     try:
         _lock.acquire(timeout=0)
@@ -36,24 +39,37 @@ def start() -> bool:
         return False  # another process is already the scheduler leader
 
     _is_leader = True
-    _scheduler.add_job(
-        agent.run_sync,
-        "interval",
-        minutes=config.SYNC_INTERVAL_MINUTES,
-        id="background_sync",
-        max_instances=1,
-        coalesce=True,
-        kwargs={"trigger": "scheduled"},
-    )
     _scheduler.start()
+    apply_settings()
     return True
 
 
-def reschedule(interval_minutes: int) -> bool:
-    """Updates the running job's interval live. Returns False if this process isn't the leader."""
+def apply_settings() -> bool:
+    """
+    Adds/removes/reschedules the background job to match current settings
+    (settings_store, which falls back to config.py env defaults). Call after
+    startup and after any PATCH /api/settings change. Returns False if this
+    process isn't the leader (nothing to do).
+    """
     if not _is_leader:
         return False
-    _scheduler.reschedule_job("background_sync", trigger="interval", minutes=interval_minutes)
+
+    settings = settings_store.get_all()
+    existing = _scheduler.get_job(_JOB_ID)
+
+    if not settings["background_sync_enabled"]:
+        if existing:
+            _scheduler.remove_job(_JOB_ID)
+        return True
+
+    if existing is None:
+        _scheduler.add_job(
+            agent.run_sync, "interval", minutes=settings["sync_interval_minutes"],
+            id=_JOB_ID, max_instances=1, coalesce=True,
+            kwargs={"trigger": "scheduled"},
+        )
+    else:
+        _scheduler.reschedule_job(_JOB_ID, trigger="interval", minutes=settings["sync_interval_minutes"])
     return True
 
 

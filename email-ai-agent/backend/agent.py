@@ -10,7 +10,7 @@ import threading
 from db import SessionLocal, Email, SyncLog, SyncCursor, ActionLog, utcnow
 import mail_client
 import classifier
-import config
+import settings_store
 
 # Serializes manual (button-click) and scheduled runs within this process --
 # APScheduler's max_instances=1 only protects against overlapping scheduled
@@ -57,7 +57,8 @@ def run_sync(trigger: str = "manual") -> dict:
                 cursor.last_uid = 0  # mailbox was recreated; UIDs are meaningless now
             cursor.uidvalidity = current_uidvalidity
 
-            emails, _more_available = mail_client.fetch_since(cursor.last_uid, config.SYNC_MAX_EMAILS)
+            max_emails = settings_store.get("sync_max_emails")
+            emails, _more_available = mail_client.fetch_since(cursor.last_uid, max_emails)
             fetched = len(emails)
 
             existing_uids = {row[0] for row in db.query(Email.imap_uid).all()}
@@ -89,6 +90,9 @@ def run_sync(trigger: str = "manual") -> dict:
                     confidence=result["confidence"],
                     summary=result["summary"],
                     classified_at=utcnow(),
+                    unsubscribe_mailto=e.get("unsubscribe_mailto"),
+                    unsubscribe_url=e.get("unsubscribe_url"),
+                    unsubscribe_one_click=e.get("unsubscribe_one_click", False),
                 ))
                 classified += 1
                 # Advance as each email is actually queued for persistence, not

@@ -85,6 +85,37 @@ def _extract_body(msg: email.message.Message) -> str:
     return ""
 
 
+def _parse_unsubscribe(msg: email.message.Message) -> dict:
+    """
+    Parses RFC 2369 List-Unsubscribe (mailto and/or https link, comma-separated
+    inside angle brackets) and RFC 8058 List-Unsubscribe-Post ("one-click").
+
+    unsubscribe_one_click is True only when the full RFC 8058 contract is met
+    (the Post header's exact value, AND an https link present) -- that's the
+    only case safe to POST automatically without a human confirming first.
+    """
+    mailto = None
+    url = None
+
+    header = msg.get("List-Unsubscribe")
+    if header:
+        for candidate in re.findall(r"<([^>]+)>", header):
+            candidate = candidate.strip()
+            if mailto is None and candidate.lower().startswith("mailto:"):
+                mailto = candidate
+            elif url is None and candidate.lower().startswith(("http://", "https://")):
+                url = candidate
+
+    post_header = (msg.get("List-Unsubscribe-Post") or "").strip().lower()
+    one_click = post_header == "list-unsubscribe=one-click" and bool(url) and url.lower().startswith("https://")
+
+    return {
+        "unsubscribe_mailto": mailto,
+        "unsubscribe_url": url,
+        "unsubscribe_one_click": one_click,
+    }
+
+
 def _parse_message(uid: str, raw: bytes) -> dict:
     msg = email.message_from_bytes(raw, policy=email.policy.default)
 
@@ -104,6 +135,7 @@ def _parse_message(uid: str, raw: bytes) -> dict:
         "subject": subject,
         "date": date,
         "body_snippet": _extract_body(msg)[:BODY_SNIPPET_MAX_CHARS],
+        **_parse_unsubscribe(msg),
     }
 
 

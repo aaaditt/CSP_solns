@@ -39,10 +39,35 @@ export function patchEmail(id, patch) {
   });
 }
 
+export function patchEmailsBulk(ids, patch) {
+  return request(`/api/emails/bulk`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, ...patch }),
+  });
+}
+
+export function getSettings() {
+  return request("/api/settings");
+}
+
+export function patchSettings(patch) {
+  return request("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
 export function getStats() {
   return request("/api/stats");
 }
 
-export function exportUrl(filters) {
-  return `${BASE_URL}/api/export?${buildQuery(filters)}`;
+export function unsubscribeEmail(id) {
+  return request(`/api/emails/${id}/unsubscribe`, { method: "POST" });
+}
+
+export function exportUrl(filters, ids) {
+  const query = buildQuery(ids && ids.length ? { ...filters, ids: ids.join(",") } : filters);
+  return `${BASE_URL}/api/export?${query}`;
 }

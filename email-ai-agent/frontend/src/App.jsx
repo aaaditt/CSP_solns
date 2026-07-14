@@ -3,7 +3,18 @@ import Header from "./components/Header";
 import FilterBar from "./components/FilterBar";
 import EmailTable from "./components/EmailTable";
 import EmailDetail from "./components/EmailDetail";
-import { listEmails, getEmail, patchEmail, getStats, syncEmails } from "./api";
+import BulkActionBar from "./components/BulkActionBar";
+import SettingsPanel from "./components/SettingsPanel";
+import {
+  listEmails,
+  getEmail,
+  patchEmail,
+  patchEmailsBulk,
+  getStats,
+  syncEmails,
+  unsubscribeEmail,
+  exportUrl,
+} from "./api";
 
 const DEFAULT_FILTERS = {
   subscription_only: true,
@@ -18,9 +29,16 @@ export default function App() {
   const [emails, setEmails] = useState([]);
   const [stats, setStats] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [error, setError] = useState(null);
   const [selectedEmail, setSelectedEmail] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  function notify(message, { isError = false } = {}) {
+    setToast({ message, isError });
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -31,6 +49,8 @@ export default function App() {
       setError(null);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }, [filters]);
 
@@ -51,22 +71,45 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    // Selections referencing rows no longer in view (filters changed, or a
+    // row got reviewed/tagged away) shouldn't linger in the bulk bar.
+    setSelectedIds((prev) => {
+      const visibleIds = new Set(emails.map((e) => e.id));
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [emails]);
+
   function updateFilters(partial) {
     setFilters((prev) => ({ ...prev, ...partial }));
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(checked) {
+    setSelectedIds(checked ? new Set(emails.map((e) => e.id)) : new Set());
   }
 
   async function handleSync() {
     setSyncing(true);
     try {
       const result = await syncEmails();
-      setToast(
-        result.status === "success"
-          ? `Sync complete: ${result.classified} new emails classified, ${result.skipped} already seen.`
-          : `Sync failed: ${result.error}`
-      );
+      if (result.status === "success") {
+        notify(`Sync complete: ${result.classified} new emails classified, ${result.skipped} already seen.`);
+      } else {
+        notify(`Sync failed: ${result.error}`, { isError: true });
+      }
       await refresh();
     } catch (err) {
-      setToast(`Sync failed: ${err.message}`);
+      notify(`Sync failed: ${err.message}`, { isError: true });
     } finally {
       setSyncing(false);
     }
@@ -77,44 +120,124 @@ export default function App() {
       const email = await getEmail(id);
       setSelectedEmail(email);
     } catch (err) {
-      setToast(`Could not open email: ${err.message}`);
+      notify(`Could not open email: ${err.message}`, { isError: true });
     }
   }
 
   async function handleToggleReviewed(id, current) {
-    await patchEmail(id, { reviewed: !current });
-    if (selectedEmail?.id === id) {
-      setSelectedEmail((prev) => ({ ...prev, reviewed: !current }));
+    try {
+      await patchEmail(id, { reviewed: !current });
+      if (selectedEmail?.id === id) {
+        setSelectedEmail((prev) => ({ ...prev, reviewed: !current }));
+      }
+      await refresh();
+    } catch (err) {
+      notify(`Could not update email: ${err.message}`, { isError: true });
     }
-    await refresh();
   }
 
   async function handleTagChange(id, tag) {
-    await patchEmail(id, { tag });
-    if (selectedEmail?.id === id) {
-      setSelectedEmail((prev) => ({ ...prev, tag }));
+    try {
+      await patchEmail(id, { tag });
+      if (selectedEmail?.id === id) {
+        setSelectedEmail((prev) => ({ ...prev, tag }));
+      }
+      await refresh();
+    } catch (err) {
+      notify(`Could not update tag: ${err.message}`, { isError: true });
     }
-    await refresh();
+  }
+
+  async function handleUnsubscribe(email) {
+    try {
+      const result = await unsubscribeEmail(email.id);
+
+      if (result.action === "completed") {
+        if (result.status === "sent") {
+          notify(`Unsubscribed from ${email.sender}.`);
+        } else {
+          notify(`Unsubscribe failed: ${result.detail}`, { isError: true });
+        }
+      } else if (result.action === "open_link") {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        await patchEmail(email.id, { unsubscribe_status: "opened" });
+        notify("Opened the unsubscribe link in a new tab.");
+      } else if (result.action === "open_mailto") {
+        window.location.href = result.mailto;
+        await patchEmail(email.id, { unsubscribe_status: "opened" });
+        notify("Opened your email client to unsubscribe.");
+      }
+
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(await getEmail(email.id));
+      }
+      await refresh();
+    } catch (err) {
+      notify(`Unsubscribe failed: ${err.message}`, { isError: true });
+    }
+  }
+
+  async function handleBulkMarkReviewed(reviewed) {
+    try {
+      const result = await patchEmailsBulk([...selectedIds], { reviewed });
+      notify(`${result.updated} email(s) updated.`);
+      setSelectedIds(new Set());
+      await refresh();
+    } catch (err) {
+      notify(`Bulk update failed: ${err.message}`, { isError: true });
+    }
+  }
+
+  async function handleBulkTag(tag) {
+    try {
+      const result = await patchEmailsBulk([...selectedIds], { tag });
+      notify(`${result.updated} email(s) tagged.`);
+      setSelectedIds(new Set());
+      await refresh();
+    } catch (err) {
+      notify(`Bulk tag failed: ${err.message}`, { isError: true });
+    }
+  }
+
+  function handleBulkExport() {
+    window.open(exportUrl(filters, [...selectedIds]), "_blank");
   }
 
   return (
     <div className="app">
-      <Header stats={stats} syncing={syncing} onSync={handleSync} />
+      <Header stats={stats} syncing={syncing} onSync={handleSync} onOpenSettings={() => setSettingsOpen(true)} />
 
       {error && (
         <div className="error-banner">
           Can't reach the backend ({error}). Is uvicorn running on port 8000?
         </div>
       )}
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className={toast.isError ? "toast toast-error" : "toast"}>{toast.message}</div>
+      )}
 
       <FilterBar filters={filters} onChange={updateFilters} />
 
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onMarkReviewed={handleBulkMarkReviewed}
+          onTag={handleBulkTag}
+          onExport={handleBulkExport}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
+
       <EmailTable
         emails={emails}
+        loading={loading}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectAll}
         onOpen={handleOpen}
         onToggleReviewed={handleToggleReviewed}
         onTagChange={handleTagChange}
+        onUnsubscribe={handleUnsubscribe}
       />
 
       <EmailDetail
@@ -122,7 +245,16 @@ export default function App() {
         onClose={() => setSelectedEmail(null)}
         onToggleReviewed={handleToggleReviewed}
         onTagChange={handleTagChange}
+        onUnsubscribe={handleUnsubscribe}
       />
+
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => notify("Settings saved.")}
+          onError={(message) => notify(message, { isError: true })}
+        />
+      )}
     </div>
   );
 }

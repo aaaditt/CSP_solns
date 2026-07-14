@@ -7,14 +7,19 @@ function StatChip({ label, value }) {
   );
 }
 
-export default function Header({ stats, syncing, onSync }) {
+export default function Header({ stats, syncing, onSync, onOpenSettings }) {
   return (
     <header className="header">
       <div className="header-top">
         <h1>Email AI Agent</h1>
-        <button className="sync-button" onClick={onSync} disabled={syncing}>
-          {syncing ? "Syncing..." : "Sync"}
-        </button>
+        <div className="header-actions">
+          <button className="settings-button" onClick={onOpenSettings}>
+            Settings
+          </button>
+          <button className="sync-button" onClick={onSync} disabled={syncing}>
+            {syncing ? "Syncing..." : "Sync"}
+          </button>
+        </div>
       </div>
       {stats && (
         <div className="stat-chips">

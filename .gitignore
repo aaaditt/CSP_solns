@@ -10,5 +10,7 @@ venv/
 env/
 .claude/
 *.db
+*.db-journal
+*.db.backup*
 *.log
 node_modules/

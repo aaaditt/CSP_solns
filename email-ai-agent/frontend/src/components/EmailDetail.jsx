@@ -1,4 +1,6 @@
-export default function EmailDetail({ email, onClose, onToggleReviewed, onTagChange }) {
+import UnsubscribeButton from "./UnsubscribeButton";
+
+export default function EmailDetail({ email, onClose, onToggleReviewed, onTagChange, onUnsubscribe }) {
   if (!email) return null;
 
   return (
@@ -29,6 +31,7 @@ export default function EmailDetail({ email, onClose, onToggleReviewed, onTagCha
             placeholder="tag..."
             onBlur={(e) => onTagChange(email.id, e.target.value)}
           />
+          <UnsubscribeButton email={email} onUnsubscribe={onUnsubscribe} />
         </div>
 
         <hr />
